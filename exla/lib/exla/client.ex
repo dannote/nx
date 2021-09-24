@@ -63,9 +63,16 @@ defmodule EXLA.Client do
     preallocate = Keyword.get(options, :preallocate, true)
     preallocate_int = if preallocate, do: 1, else: 0
 
+    plugin = Keyword.get(options, :plugin)
+
+    if plugin do
+      EXLA.NIF.load_pluggable_device_library(plugin)
+    end
+
     ref =
       case platform do
         :host -> EXLA.NIF.get_host_client()
+        :metal -> EXLA.NIF.get_gpu_client(memory_fraction, preallocate_int)
         :cuda -> EXLA.NIF.get_gpu_client(memory_fraction, preallocate_int)
         :rocm -> EXLA.NIF.get_gpu_client(memory_fraction, preallocate_int)
         :tpu -> EXLA.NIF.get_tpu_client()

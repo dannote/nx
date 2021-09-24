@@ -14,6 +14,8 @@
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
 #include "tensorflow/compiler/xla/client/lib/svd.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_plugin_init.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 
 // All of these are created with calls to `new` and subsequently
 // passed to the VM as pointers-to-pointers so we balance it out
@@ -2229,6 +2231,48 @@ ERL_NIF_TERM start_log_sink(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
   return exla::nif::ok(env);
 }
 
+// PluggableDevice Functions
+
+ERL_NIF_TERM load_pluggable_device_library(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  if (argc != 1) {
+    return exla::nif::make(env, "Bad argument count.");
+  }
+
+  std::string library_filename;
+
+  if (!exla::nif::get(env, argv[0], library_filename)) {
+    return exla::nif::error(env, "Unable to get parameter library_filename.");
+  }
+
+  void* library_handle = nullptr;
+  tensorflow::Status status;
+
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  tensorflow::mutex_lock lock(mu);
+
+  status = tensorflow::Env::Default()->LoadDynamicLibrary(library_filename.c_str(), &library_handle);
+
+  if (!status.ok()) {
+    return exla::nif::error(env, status.ToString().c_str());  
+  }
+
+  status = tensorflow::RegisterPluggableDevicePlugin(library_handle);
+
+  if (!status.ok()) {
+    return exla::nif::error(env, status.ToString().c_str());  
+  }
+
+  // Force device list update
+  std::vector<std::string> devices;
+  status = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+
+  if (!status.ok()) {
+    return exla::nif::error(env, status.ToString().c_str());  
+  }
+
+  return exla::nif::ok(env);
+}
+
 static ErlNifFunc exla_funcs[] = {
   // XlaBuilder
   {"new_builder", 1, new_builder},
@@ -2373,7 +2417,9 @@ static ErlNifFunc exla_funcs[] = {
   {"outfeed", 3, outfeed},
   {"create_token", 1, create_token},
   // Log Sink
-  {"start_log_sink", 1, start_log_sink}
+  {"start_log_sink", 1, start_log_sink},
+  // PluggableDevice
+  {"load_pluggable_device_library", 1, load_pluggable_device_library}
 };
 
 ERL_NIF_INIT(Elixir.EXLA.NIF, exla_funcs, &load, NULL, NULL, NULL);

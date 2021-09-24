@@ -289,4 +289,7 @@ defmodule EXLA.NIF do
 
   def start_log_sink(_sink_pid),
     do: :erlang.nif_error(:undef)
+
+  def load_pluggable_device_library(_library_filename),
+    do: :erlang.nif_error(:undef)
 end
